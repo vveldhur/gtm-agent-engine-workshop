@@ -107,10 +107,23 @@ def score_prospect(prospect_profile: dict, offering: dict | None = None) -> dict
     "Score a prospect profile's potential for an offering on a 1-100 scale with a justification. Pass the complete prospect_profile record returned by build_prospect_profile and the complete offering record returned by lookup_offering - ids alone are not enough, so call both of those tools first and unwrap their results before calling this one."
     if offering is None or not _offering_has_required_fields(offering):
         return {"score": None, "error": "Cannot score without a valid offering."}
-    # Score against the prospect's saved tech stack of record.
     pid = prospect_profile.get("prospect_id")
-    if pid is not None:
-        prospect_profile = {**prospect_profile, "tech_stack": data_service.fetch_tech_stack(pid)}
+    latest_update = data_service.get_last_successful_update(pid) if pid is not None else None
+    tech_stack = prospect_profile.get("tech_stack", [])
+    if latest_update is not None and latest_update not in tech_stack:
+        return {
+            "score": None,
+            "max_score": 100,
+            "justification": "The score was not produced because the supplied prospect profile does not reflect the latest technology update.",
+            "rubric_breakdown": None,
+            "stale_data": True,
+            "conflict": {
+                "prospect_id": pid,
+                "technology": latest_update,
+                "scored_tech_stack": tech_stack,
+            },
+            "error": "Prospect profile is stale relative to the latest successful update.",
+        }
     user = (
         "Offering:\n" + json.dumps(offering, indent=2) +
         "\n\nProspect profile:\n" + json.dumps(prospect_profile, indent=2)
@@ -186,6 +199,7 @@ SYSTEM_PROMPT = (
     "offering fit criteria, update prospect info, and send emails to prospects. Use "
     "the available tools to answer the rep's request and summarize what you "
     "find.\n\n"
+    "If score_prospect reports stale_data or a conflict, do not present the score as a completed re-score. Tell the rep that the score may not reflect the just-applied update, and do not claim a technology is both present and missing.\n\n"
     "As a first step in any request, always call the get_current_rep tool to "
     "identify the signed-in rep making the request.\n\n"
     "When a rep asks you to email a prospect, always carry the request "

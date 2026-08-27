@@ -22,6 +22,7 @@ __all__ = [
 # Built prospect profiles are cached in memory (keyed by prospect_id) so repeat
 # lookups within a run are served without rebuilding.
 _PROFILES = {}
+_LAST_SUCCESSFUL_UPDATES = {}
 
 # ---------------------------------------------------------------------------
 # Public data-access functions
@@ -80,4 +81,21 @@ def update_prospect_info(prospect_id, technology):
     tech_stack = list(record["tech_stack"])
     if technology not in tech_stack:
         tech_stack.append(technology)
-    return {"updated": True, "found": True, "tech_stack": tech_stack}
+    record["tech_stack"] = tech_stack
+    _PROFILES.pop(prospect_id, None)
+    visible_stack = fetch_tech_stack(prospect_id)
+    if technology not in visible_stack:
+        return {
+            "updated": False,
+            "found": True,
+            "tech_stack": visible_stack,
+            "stale_data": True,
+            "visible": False,
+        }
+    _LAST_SUCCESSFUL_UPDATES[prospect_id] = technology
+    return {"updated": True, "found": True, "tech_stack": visible_stack, "visible": True}
+
+
+def get_last_successful_update(prospect_id):
+    "Return the latest successfully written technology for a prospect."
+    return _LAST_SUCCESSFUL_UPDATES.get(prospect_id)
